@@ -56,7 +56,7 @@ export interface OpenAIListModelResponse {
 
 export interface RequestPayload {
   messages: {
-    role: "system" | "user" | "assistant";
+    role: "developer" | "system" | "user" | "assistant";
     content: string | MultimodalContent[];
   }[];
   stream?: boolean;
@@ -198,7 +198,8 @@ export class ChatGPTApi implements LLMApi {
     const isDalle3 = _isDalle3(options.config.model);
     const isO1OrO3 =
       options.config.model.startsWith("o1") ||
-      options.config.model.startsWith("o3");
+      options.config.model.startsWith("o3") ||
+      options.config.model.startsWith("o4-mini");
     if (isDalle3) {
       const prompt = getMessageTextContent(
         options.messages.slice(-1)?.pop() as any,
@@ -237,13 +238,21 @@ export class ChatGPTApi implements LLMApi {
         // Please do not ask me why not send max_tokens, no reason, this param is just shit, I dont want to explain anymore.
       };
 
-      // O1 使用 max_completion_tokens 控制token数 (https://platform.openai.com/docs/guides/reasoning#controlling-costs)
       if (isO1OrO3) {
+        // by default the o1/o3 models will not attempt to produce output that includes markdown formatting
+        // manually add "Formatting re-enabled" developer message to encourage markdown inclusion in model responses
+        // (https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/reasoning?tabs=python-secure#markdown-output)
+        requestPayload["messages"].unshift({
+          role: "developer",
+          content: "Formatting re-enabled",
+        });
+
+        // o1/o3 uses max_completion_tokens to control the number of tokens (https://platform.openai.com/docs/guides/reasoning#controlling-costs)
         requestPayload["max_completion_tokens"] = modelConfig.max_tokens;
       }
 
       // add max_tokens to vision model
-      if (visionModel) {
+      if (visionModel && !isO1OrO3) {
         requestPayload["max_tokens"] = Math.max(modelConfig.max_tokens, 4000);
       }
     }
